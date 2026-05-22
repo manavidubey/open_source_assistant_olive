@@ -92,10 +92,28 @@ def convert_units(query: str) -> ToolResult:
         return ToolResult(False, "", "unit_converter", str(e))
 
 
+def web_search(query: str) -> ToolResult:
+    try:
+        from duckduckgo_search import DDGS
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=3))
+        
+        if not results:
+            return ToolResult(False, "", "web_search", "No results found.")
+            
+        formatted = "\n\n".join([f"**{r['title']}**\n{r['body']}\n*Source: {r['href']}*" for r in results])
+        return ToolResult(True, formatted, "web_search")
+    except ImportError:
+        return ToolResult(False, "", "web_search", "duckduckgo-search not installed")
+    except Exception as e:
+        return ToolResult(False, "", "web_search", str(e))
+
+
 TOOL_REGISTRY = {
     "calculator": {"name": "calculator", "description": "Evaluate math expressions safely.", "function": safe_calculate},
     "datetime": {"name": "datetime", "description": "Get current date/time.", "function": get_datetime},
     "unit_converter": {"name": "unit_converter", "description": "Convert between units.", "function": convert_units},
+    "web_search": {"name": "web_search", "description": "Search the web for real-time information.", "function": web_search},
 }
 
 
@@ -125,4 +143,9 @@ class ToolManager:
             return self.invoke("datetime", m)
         if any(t in m for t in ["convert", "to miles", "to km", "to celsius", "to fahrenheit"]):
             return self.invoke("unit_converter", m.replace("convert", "").strip())
+        if any(t in m for t in ["search for", "look up", "find information on", "who is", "what is the latest"]):
+            query = m
+            for t in ["search for", "look up", "find information on"]:
+                query = query.replace(t, "").strip()
+            return self.invoke("web_search", query)
         return None

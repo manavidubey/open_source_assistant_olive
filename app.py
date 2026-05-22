@@ -8,6 +8,7 @@ Premium chat interface supporting both OSS (Qwen 2.5) and Frontier
 import streamlit as st
 import time
 import json
+import re
 from config import Config
 from assistants.oss_assistant import OSSAssistant
 from assistants.frontier_assistant import FrontierAssistant
@@ -264,6 +265,27 @@ def render_sidebar():
             st.metric("🔧 Tools", metrics.get("tool_uses", 0))
 
 
+# ── Render Helpers ───────────────────────────────────────────────
+def render_message(role: str, content: str, avatar: str):
+    """Render a single chat message, extracting <think> tags into an expander."""
+    with st.chat_message(role, avatar=avatar):
+        if role == "assistant" and "<think>" in content:
+            think_match = re.search(r"<think>(.*?)</think>", content, re.DOTALL)
+            if think_match:
+                think_content = think_match.group(1).strip()
+                main_content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+                
+                if think_content:
+                    with st.expander("🧠 Model Reasoning"):
+                        st.markdown(think_content)
+                if main_content:
+                    st.markdown(main_content)
+            else:
+                st.markdown(content)
+        else:
+            st.markdown(content)
+
+
 # ── Chat Interface ───────────────────────────────────────────────
 def render_single_chat():
     """Render single-model chat interface."""
@@ -279,8 +301,7 @@ def render_single_chat():
 
     # Display messages
     for msg in st.session_state[messages_key]:
-        with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🤖"):
-            st.markdown(msg["content"])
+        render_message(msg["role"], msg["content"], "👤" if msg["role"] == "user" else "🤖")
 
     # Input
     if prompt := st.chat_input(f"Message {model_name}..."):
@@ -294,9 +315,10 @@ def render_single_chat():
             with st.spinner("Thinking..."):
                 assistant = get_assistant(model_type)
                 response = assistant.chat(prompt)
-            st.markdown(response)
-
-        st.session_state[messages_key].append({"role": "assistant", "content": response})
+                
+            # Temporarily add to session state to render it cleanly using the helper
+            st.session_state[messages_key].append({"role": "assistant", "content": response})
+            st.rerun()
 
 
 def render_compare_chat():
@@ -306,14 +328,12 @@ def render_compare_chat():
     with col1:
         st.markdown(f"#### 🟣 OSS — {st.session_state.config.get_oss_model().split('/')[-1]}")
         for msg in st.session_state.messages_oss:
-            with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🟣"):
-                st.markdown(msg["content"])
+            render_message(msg["role"], msg["content"], "👤" if msg["role"] == "user" else "🟣")
 
     with col2:
         st.markdown(f"#### 🔵 Frontier — {st.session_state.config.get_frontier_model().split('/')[-1]}")
         for msg in st.session_state.messages_frontier:
-            with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🔵"):
-                st.markdown(msg["content"])
+            render_message(msg["role"], msg["content"], "👤" if msg["role"] == "user" else "🔵")
 
     # Input
     if prompt := st.chat_input("Message both models..."):

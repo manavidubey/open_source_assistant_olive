@@ -22,6 +22,7 @@ structlog>=24.4.0
 # Tools
 requests>=2.32.0
 python-dateutil>=2.9.0
+duckduckgo-search>=5.0.0
 
 # Guardrails
 better-profanity>=0.7.0
