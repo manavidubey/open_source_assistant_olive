@@ -187,32 +187,36 @@ This generates:
 
 ---
 
-## 🚢 Deployment
+## 🚢 Deployment (Bonus Task)
 
-### Hugging Face Spaces (OSS Model)
+We support deploying the OSS Model across multiple platforms. The architecture's abstraction layer ensures that whether the model runs on Hugging Face Spaces, Modal, or RunPod, the **memory, safety guardrails, and tools** function identically.
 
+### 1. Hugging Face Spaces (Recommended for zero-cost)
+Hugging Face Spaces natively supports Streamlit. You can deploy this exact dual-model UI, complete with memory, tools, and guardrails:
 1. Create a new Space at [huggingface.co/new-space](https://huggingface.co/new-space)
-2. Select **Gradio** as the SDK
-3. Upload the contents of `deployment/hf_spaces/`
-4. Set `HF_API_TOKEN` in Space secrets
-5. The app will be live at `https://huggingface.co/spaces/yourusername/ai-assistant`
+2. Select **Streamlit** as the Space SDK.
+3. Push this entire repository to the Space.
+4. Go to Space Settings -> Variables and Secrets. Add your `GROQ_API_KEY` and other provider keys.
+5. Your space will automatically install `requirements.txt` and run the app.
 
-### Docker
+### 2. GPU Cloud Platforms (Modal, RunPod, Replicate)
+If you require lower latency and want to self-host the weights for privacy, you can run the OSS model on a serverless GPU platform:
+- **Modal:** Spin up an A10G/T4 container serving an OpenAI-compatible FastAPI endpoint. Configure `config.py` base_url to point to your Modal endpoint.
+- **RunPod:** Use the official vLLM template on a Serverless endpoint. Very cost-effective for sustained traffic.
+- **Ollama:** Best for local privacy. Run `ollama run qwen2.5:0.5b` and point the `base_url` to `http://localhost:11434/v1`.
 
-```bash
-docker build -t ai-assistant .
-docker run -p 8501:8501 --env-file .env ai-assistant
-```
+### 📊 Cost & Latency Table (OSS Deployment Comparison)
 
-### Cost & Latency Table
+This table compares deploying an OSS model (e.g., Qwen 2.5 8B) across various infrastructure platforms.
 
-| Model | Provider | Cost (per 1M tokens) | Avg Latency | Setup Complexity |
-|---|---|---|---|---|
-| Qwen 2.5-0.5B | HF Inference (free) | $0 | ~800–1500ms | Low |
-| Qwen 2.5-0.5B | HF Spaces (free) | $0 | ~1000–2000ms | Low |
-| Qwen 2.5-0.5B | Modal (GPU) | ~$0.60/hr | ~200–500ms | Medium |
-| Gemini 2.0 Flash | Google AI | ~$0.10 / $0.40 | ~300–800ms | Low |
-| GPT-4.1-mini | OpenAI | ~$0.40 / $1.60 | ~400–1000ms | Low |
+| Deployment Platform | Infrastructure | Est. Cost | Avg Latency (TTFT) | Complexity | Best For |
+|---|---|---|---|---|---|
+| **Hugging Face Spaces** | Free CPU/T4 Tier | **$0** | ~1000–2500ms | Low | Prototypes, portfolios, zero budget |
+| **Groq / Together API** | LPU / Cloud GPU | **Free Tier** | ~100–300ms | Low | Production apps relying on APIs |
+| **Modal (Serverless)** | A10G / T4 | **~$0.60/hr** (active) | ~200–500ms | Medium | Scalable, spiky traffic production |
+| **RunPod (vLLM)** | RTX 4090 / A6000 | **~$0.40/hr** | ~150–400ms | High | High sustained throughput workloads |
+| **Ollama (Local)** | Local M-series / GPU | **$0** (Hardware cost) | ~100–300ms | Low | Local testing, strict privacy |
+| **Replicate** | Serverless GPU | **~$0.0002/sec** | ~400–800ms | Low | Quick serverless scaling |
 
 ---
 
