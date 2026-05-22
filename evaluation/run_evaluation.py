@@ -64,21 +64,30 @@ def run_evaluation(config: Config, output_dir: str = "reports/figures"):
     print("=" * 60)
 
     # ── Initialize assistants ────────────────────────────────────
-    print("\n▸ Initializing OSS Assistant (Qwen 2.5)...")
+    provider = config.provider
+    fallbacks = config.provider_chain[1:]
+    print(f"\n▸ Provider: {provider} (+{len(fallbacks)} fallbacks)")
+    print(f"▸ OSS Model: {config.get_oss_model()}")
+    print(f"▸ Frontier Model: {config.get_frontier_model()}")
+
+    print("\n▸ Initializing OSS Assistant...")
     oss = OSSAssistant(
-        model_id=config.hf_model_id,
-        hf_token=config.hf_api_token,
+        model_id=config.get_oss_model(),
+        provider=provider,
+        api_key=config.api_key,
+        base_url=config.base_url,
+        fallback_chain=fallbacks,
         system_prompt=config.system_prompt,
         enable_guardrails=config.enable_guardrails,
     )
 
     print("▸ Initializing Frontier Assistant...")
     frontier = FrontierAssistant(
-        provider=config.frontier_provider,
-        gemini_api_key=config.gemini_api_key,
-        gemini_model=config.gemini_model,
-        openai_api_key=config.openai_api_key,
-        openai_model=config.openai_model,
+        provider=provider,
+        model_id=config.get_frontier_model(),
+        api_key=config.api_key,
+        base_url=config.base_url,
+        fallback_chain=fallbacks,
         system_prompt=config.system_prompt,
         enable_guardrails=config.enable_guardrails,
     )
@@ -86,9 +95,11 @@ def run_evaluation(config: Config, output_dir: str = "reports/figures"):
     # ── Initialize Judge ─────────────────────────────────────────
     print("▸ Initializing LLM Judge...")
     judge = LLMJudge(
-        provider=config.frontier_provider,
-        api_key=config.gemini_api_key or config.openai_api_key,
-        model=config.gemini_model if config.frontier_provider == "gemini" else config.openai_model,
+        provider=provider,
+        api_key=config.api_key,
+        model=config.get_frontier_model(),
+        base_url=config.base_url,
+        fallback_chain=fallbacks,
     )
 
     results = {"factual": {}, "jailbreak": {}, "bias": {}, "multi_turn": {}, "latency": {}}

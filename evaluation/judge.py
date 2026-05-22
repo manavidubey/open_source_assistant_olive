@@ -100,46 +100,83 @@ def parse_judge_response(response: str) -> dict:
 class LLMJudge:
     """
     Uses a frontier model to judge assistant responses.
-    Supports Gemini and OpenAI as judge backends.
+    Supports Groq, Cerebras, Together, NVIDIA, Gemini, and OpenAI.
+    Has fallback: if primary fails, tries backup providers.
     """
 
-    def __init__(self, provider: str = "gemini", api_key: str = "", model: str = ""):
-        self.provider = provider
-        self._client = None
+    def __init__(self, provider: str = "groq", api_key: str = "",
+                 model: str = "", base_url: str | None = None,
+                 fallback_chain: list | None = None):
+        self._clients = []
 
-        if provider == "gemini":
-            from google import genai
-            self._client = genai.Client(api_key=api_key)
-            self._model = model or "gemini-2.0-flash"
-        elif provider == "openai":
+        # Primary
+        self._clients.append(self._make_client(provider, api_key, base_url, model))
+
+        # Fallbacks
+        for fb in (fallback_chain or []):
+            fm = fb.frontier_model
+            if fm:
+                self._clients.append(self._make_client(fb.name, fb.api_key, fb.base_url, fm))
+
+    @staticmethod
+    def _make_client(provider, api_key, base_url, model):
+        if provider in ("groq", "cerebras", "together", "nvidia", "openai"):
             from openai import OpenAI
-            self._client = OpenAI(api_key=api_key)
-            self._model = model or "gpt-4.1-mini"
+            if not model:
+                model = {
+                    "groq": "llama-3.3-70b-versatile",
+                    "cerebras": "llama-3.3-70b",
+                    "together": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+                    "nvidia": "meta/llama-3.3-70b-instruct",
+                    "openai": "gpt-4.1-mini",
+                }.get(provider, "")
+            return {
+                "type": "openai_compat",
+                "client": OpenAI(api_key=api_key, base_url=base_url),
+                "model": model,
+                "provider": provider,
+            }
+        elif provider == "gemini":
+            from google import genai
+            return {
+                "type": "gemini",
+                "client": genai.Client(api_key=api_key),
+                "model": model or "gemini-2.0-flash",
+                "provider": "gemini",
+            }
+        return None
 
     def _call_judge(self, prompt: str) -> str:
-        """Call the judge model."""
-        if self.provider == "gemini":
-            resp = self._client.models.generate_content(
-                model=self._model,
-                contents=[{"role": "user", "parts": [{"text": prompt}]}],
-                config={
-                    "temperature": 0.1,
-                    "max_output_tokens": 512,
-                    "system_instruction": JUDGE_SYSTEM_PROMPT,
-                },
-            )
-            return resp.text or ""
-        elif self.provider == "openai":
-            resp = self._client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=512,
-                temperature=0.1,
-            )
-            return resp.choices[0].message.content or ""
+        """Call the judge model with fallback."""
+        for info in self._clients:
+            if info is None:
+                continue
+            try:
+                if info["type"] == "openai_compat":
+                    resp = info["client"].chat.completions.create(
+                        model=info["model"],
+                        messages=[
+                            {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
+                            {"role": "user", "content": prompt},
+                        ],
+                        max_tokens=512,
+                        temperature=0.1,
+                    )
+                    return resp.choices[0].message.content or ""
+                elif info["type"] == "gemini":
+                    resp = info["client"].models.generate_content(
+                        model=info["model"],
+                        contents=[{"role": "user", "parts": [{"text": prompt}]}],
+                        config={
+                            "temperature": 0.1,
+                            "max_output_tokens": 512,
+                            "system_instruction": JUDGE_SYSTEM_PROMPT,
+                        },
+                    )
+                    return resp.text or ""
+            except Exception as e:
+                print(f"  ⚠ Judge {info['provider']} failed: {e.__class__.__name__}")
+                continue
         return ""
 
     def judge_hallucination(self, question: str, response: str, ground_truth: str) -> dict:

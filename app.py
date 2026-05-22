@@ -163,12 +163,16 @@ def init_session():
 def get_assistant(model_type: str):
     """Get or create the specified assistant."""
     config = st.session_state.config
+    fallbacks = config.provider_chain[1:]  # All providers except primary
 
     if model_type == "oss":
         if st.session_state.oss_assistant is None:
             st.session_state.oss_assistant = OSSAssistant(
-                model_id=config.hf_model_id,
-                hf_token=config.hf_api_token,
+                model_id=config.get_oss_model(),
+                provider=config.provider,
+                api_key=config.api_key,
+                base_url=config.base_url,
+                fallback_chain=fallbacks,
                 system_prompt=config.system_prompt,
                 max_memory_turns=config.max_memory_turns,
                 enable_guardrails=config.enable_guardrails,
@@ -179,11 +183,11 @@ def get_assistant(model_type: str):
     elif model_type == "frontier":
         if st.session_state.frontier_assistant is None:
             st.session_state.frontier_assistant = FrontierAssistant(
-                provider=config.frontier_provider,
-                gemini_api_key=config.gemini_api_key,
-                gemini_model=config.gemini_model,
-                openai_api_key=config.openai_api_key,
-                openai_model=config.openai_model,
+                provider=config.provider,
+                model_id=config.get_frontier_model(),
+                api_key=config.api_key,
+                base_url=config.base_url,
+                fallback_chain=fallbacks,
                 system_prompt=config.system_prompt,
                 max_memory_turns=config.max_memory_turns,
                 enable_guardrails=config.enable_guardrails,
@@ -210,9 +214,12 @@ def render_sidebar():
 
         if st.session_state.mode == "single":
             st.markdown("### 🧠 Model")
+            config = st.session_state.config
+            oss_label = f"OSS — {config.get_oss_model().split('/')[-1]}"
+            frontier_label = f"Frontier — {config.get_frontier_model().split('/')[-1]}"
             model = st.radio(
                 "Select model",
-                ["OSS — Qwen 2.5", "Frontier — Gemini / OpenAI"],
+                [oss_label, frontier_label],
                 label_visibility="collapsed",
                 key="model_radio",
             )
@@ -260,11 +267,15 @@ def render_sidebar():
 # ── Chat Interface ───────────────────────────────────────────────
 def render_single_chat():
     """Render single-model chat interface."""
+    config = st.session_state.config
     model_type = st.session_state.active_model
-    model_name = "OSS — Qwen 2.5" if model_type == "oss" else "Frontier"
+    if model_type == "oss":
+        model_name = f"OSS — {config.get_oss_model().split('/')[-1]}"
+    else:
+        model_name = f"Frontier — {config.get_frontier_model().split('/')[-1]}"
     messages_key = f"messages_{model_type}"
 
-    st.markdown(f"**Active Model:** `{model_name}`")
+    st.markdown(f"**Active Model:** `{model_name}` via `{config.provider}`")
 
     # Display messages
     for msg in st.session_state[messages_key]:
@@ -293,13 +304,13 @@ def render_compare_chat():
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("#### 🟣 OSS — Qwen 2.5")
+        st.markdown(f"#### 🟣 OSS — {st.session_state.config.get_oss_model().split('/')[-1]}")
         for msg in st.session_state.messages_oss:
             with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🟣"):
                 st.markdown(msg["content"])
 
     with col2:
-        st.markdown("#### 🔵 Frontier")
+        st.markdown(f"#### 🔵 Frontier — {st.session_state.config.get_frontier_model().split('/')[-1]}")
         for msg in st.session_state.messages_frontier:
             with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🔵"):
                 st.markdown(msg["content"])

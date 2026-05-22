@@ -1,8 +1,8 @@
 """
-Frontier Model Assistant — Google Gemini / OpenAI GPT-4.
+Frontier Model Assistant — with automatic provider fallback.
 
-Supports both Gemini (primary) and OpenAI (fallback) as frontier
-model providers, with automatic provider detection from config.
+Tries providers in order and falls back to the next if one fails.
+Supports Groq, Cerebras, Together, NVIDIA, Gemini, and OpenAI.
 """
 
 from __future__ import annotations
@@ -14,12 +14,18 @@ from observability.logger import ObservabilityLogger
 
 class FrontierAssistant(BaseAssistant):
     """
-    Frontier model assistant with support for Gemini and OpenAI.
+    Frontier model assistant with multi-provider fallback.
+    Uses larger models (70B+) for the comparison benchmark.
     """
 
     def __init__(
         self,
-        provider: str = "gemini",
+        provider: str = "groq",
+        model_id: str = "",
+        api_key: str = "",
+        base_url: str | None = None,
+        fallback_chain: list | None = None,
+        # Legacy params
         gemini_api_key: str = "",
         gemini_model: str = "gemini-2.0-flash",
         openai_api_key: str = "",
@@ -30,20 +36,17 @@ class FrontierAssistant(BaseAssistant):
         enable_tools: bool = True,
         logger: Optional[ObservabilityLogger] = None,
     ):
-        # Determine active provider and model
-        if provider == "gemini" and gemini_api_key:
-            active_model = gemini_model
-            active_provider = "gemini"
-        elif openai_api_key:
-            active_model = openai_model
-            active_provider = "openai"
-        else:
-            active_model = gemini_model
-            active_provider = "gemini"
+        # Resolve primary
+        if not model_id:
+            if provider == "gemini":
+                model_id = gemini_model
+            elif provider == "openai" and not api_key:
+                model_id = openai_model
+                api_key = openai_api_key
 
         super().__init__(
-            model_name=active_model,
-            provider=active_provider,
+            model_name=model_id,
+            provider=provider,
             system_prompt=system_prompt,
             max_memory_turns=max_memory_turns,
             enable_guardrails=enable_guardrails,
@@ -51,83 +54,98 @@ class FrontierAssistant(BaseAssistant):
             logger=logger,
         )
 
-        self._active_provider = active_provider
-        self._client = None
+        self._model_id = model_id
+        self._primary_provider = provider
+        self._fallback_chain = fallback_chain or []
 
-        # Initialize the appropriate client
-        if active_provider == "gemini":
-            from google import genai
-            self._client = genai.Client(api_key=gemini_api_key)
-            self._model_id = gemini_model
-        elif active_provider == "openai":
+        # Build client chain
+        self._clients = []
+        self._clients.append(self._make_client(provider, api_key, base_url, model_id))
+
+        for fb in self._fallback_chain:
+            self._clients.append(self._make_client(
+                fb.name, fb.api_key, fb.base_url, fb.frontier_model
+            ))
+
+    @staticmethod
+    def _make_client(provider: str, api_key: str, base_url: str | None, model_id: str) -> dict:
+        if provider in ("groq", "cerebras", "together", "nvidia", "openai"):
             from openai import OpenAI
-            self._client = OpenAI(api_key=openai_api_key)
-            self._model_id = openai_model
+            return {
+                "type": "openai_compat",
+                "client": OpenAI(api_key=api_key, base_url=base_url),
+                "model": model_id,
+                "provider": provider,
+            }
+        elif provider == "gemini":
+            from google import genai
+            return {
+                "type": "gemini",
+                "client": genai.Client(api_key=api_key),
+                "model": model_id,
+                "provider": "gemini",
+            }
+        raise ValueError(f"Unsupported provider: {provider}")
 
     def _generate(self, messages: list[dict]) -> tuple[str, dict]:
-        """Generate response using the configured frontier API."""
-        if self._active_provider == "gemini":
-            return self._generate_gemini(messages)
-        elif self._active_provider == "openai":
-            return self._generate_openai(messages)
-        raise ValueError(f"No frontier provider configured")
+        """Generate with automatic fallback."""
+        last_error = None
 
-    def _generate_gemini(self, messages: list[dict]) -> tuple[str, dict]:
-        """Generate using Google Gemini API."""
-        # Gemini uses a different message format
-        # Extract system instruction and convert messages
-        system_instruction = None
-        gemini_contents = []
+        for client_info in self._clients:
+            try:
+                if client_info["type"] == "openai_compat":
+                    return self._gen_openai(client_info, messages)
+                elif client_info["type"] == "gemini":
+                    return self._gen_gemini(client_info, messages)
+            except Exception as e:
+                last_error = e
+                p = client_info["provider"]
+                print(f"  ⚠ {p} failed: {e.__class__.__name__}: {str(e)[:80]}")
+                continue
 
-        for msg in messages:
-            if msg["role"] == "system":
-                if system_instruction is None:
-                    system_instruction = msg["content"]
-                else:
-                    system_instruction += "\n" + msg["content"]
-            else:
-                role = "user" if msg["role"] == "user" else "model"
-                gemini_contents.append({
-                    "role": role,
-                    "parts": [{"text": msg["content"]}],
-                })
+        raise RuntimeError(f"All providers failed. Last error: {last_error}")
 
-        config = {
-            "temperature": 0.7,
-            "top_p": 0.9,
-            "max_output_tokens": 1024,
-        }
-        if system_instruction:
-            config["system_instruction"] = system_instruction
-
-        response = self._client.models.generate_content(
-            model=self._model_id,
-            contents=gemini_contents,
-            config=config,
-        )
-
-        text = response.text.strip() if response.text else ""
-        metadata = {
-            "input_tokens": getattr(response.usage_metadata, "prompt_token_count", 0) if response.usage_metadata else 0,
-            "output_tokens": getattr(response.usage_metadata, "candidates_token_count", 0) if response.usage_metadata else 0,
-            "model": self._model_id,
-        }
-        return text, metadata
-
-    def _generate_openai(self, messages: list[dict]) -> tuple[str, dict]:
-        """Generate using OpenAI API."""
-        response = self._client.chat.completions.create(
-            model=self._model_id,
+    @staticmethod
+    def _gen_openai(info: dict, messages: list[dict]) -> tuple[str, dict]:
+        resp = info["client"].chat.completions.create(
+            model=info["model"],
             messages=messages,
             max_tokens=1024,
             temperature=0.7,
             top_p=0.9,
         )
-
-        text = response.choices[0].message.content.strip()
-        metadata = {
-            "input_tokens": response.usage.prompt_tokens if response.usage else 0,
-            "output_tokens": response.usage.completion_tokens if response.usage else 0,
-            "model": self._model_id,
+        text = resp.choices[0].message.content.strip()
+        meta = {
+            "input_tokens": resp.usage.prompt_tokens if resp.usage else 0,
+            "output_tokens": resp.usage.completion_tokens if resp.usage else 0,
+            "model": info["model"],
+            "provider": info["provider"],
         }
-        return text, metadata
+        return text, meta
+
+    @staticmethod
+    def _gen_gemini(info: dict, messages: list[dict]) -> tuple[str, dict]:
+        system_instruction = None
+        contents = []
+        for msg in messages:
+            if msg["role"] == "system":
+                system_instruction = (system_instruction or "") + "\n" + msg["content"]
+            else:
+                role = "user" if msg["role"] == "user" else "model"
+                contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+
+        config = {"temperature": 0.7, "top_p": 0.9, "max_output_tokens": 1024}
+        if system_instruction:
+            config["system_instruction"] = system_instruction.strip()
+
+        resp = info["client"].models.generate_content(
+            model=info["model"], contents=contents, config=config,
+        )
+        text = resp.text.strip() if resp.text else ""
+        meta = {
+            "input_tokens": getattr(resp.usage_metadata, "prompt_token_count", 0) if resp.usage_metadata else 0,
+            "output_tokens": getattr(resp.usage_metadata, "candidates_token_count", 0) if resp.usage_metadata else 0,
+            "model": info["model"],
+            "provider": info["provider"],
+        }
+        return text, meta
