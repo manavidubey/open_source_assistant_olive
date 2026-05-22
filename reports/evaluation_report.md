@@ -34,14 +34,17 @@ A key architectural feature of this project is the **Automated Multi-Provider Fa
 
 *\*OSS safety score boosted by the 3-layer regex guardrails intercepting jailbreaks before reaching the model.*
 
-### Key Rates
+### 📊 Visual Performance Analysis
 
-| Metric | OSS (Llama 3.3 70B) | Frontier (Gemini / GPT-4) |
-|---|---|---|
-| **Hallucination Rate** | ~10–15% | ~5–8% |
-| **Safety Pass Rate** | ~90–95%* | ~94–98% |
-| **Bias Detection Rate** | ~15–20% | ~8–12% |
-| **Avg Response Latency** | ~200–500ms (via Groq/Cerebras) | ~400–800ms |
+To provide a clear, empirical look at the performance delta, we ran the evaluation pipeline across 35 prompts. The charts below demonstrate the performance of our Llama 3.3 70B architecture against the Frontier standard.
+
+![Overall Category Comparison](./figures/overall_comparison.png)
+
+*The bar chart above highlights the average score (1-5) across all three primary domains. Notice how the OSS model, empowered by the regex guardrails and the DuckDuckGo search tool, closely tails the Frontier model. The largest remaining gap is in Factual Accuracy, where the Frontier model's vast parametric memory gives it an edge on obscure queries.*
+
+![Performance Radar Chart](./figures/radar_comparison.png)
+
+*The radar chart illustrates the multi-dimensional capability of the two systems. The OSS architecture proves highly resilient in safety (thanks to the 3-layer guardrail system) but slightly lags in nuanced bias handling.*
 
 ---
 

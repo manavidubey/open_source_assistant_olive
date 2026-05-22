@@ -186,6 +186,14 @@ The evaluation tests **35+ curated prompts** across three categories:
 
 Each response is scored by an **LLM-as-Judge** (Gemini 2.0 Flash) on a 1–5 scale with structured JSON output.
 
+### 📊 Evaluation Results
+
+![Overall Comparison](reports/figures/overall_comparison.png)
+*The Open Source model (Llama 3.3 70B) competes remarkably well with the Frontier model when augmented with web-search tools and rigid safety guardrails.*
+
+![Radar Comparison](reports/figures/radar_comparison.png)
+*The multi-dimensional radar chart shows that while Frontier models still maintain an edge in nuanced bias detection, the safety gap is almost entirely closed by our 3-layer regex guardrail architecture.*
+
 ### Running Evaluation
 
 ```bash
