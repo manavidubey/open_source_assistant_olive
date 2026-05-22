@@ -1,3 +1,15 @@
+---
+title: AI Personal Assistant
+emoji: 🤖
+colorFrom: indigo
+colorTo: blue
+sdk: streamlit
+sdk_version: 1.38.0
+app_file: app.py
+pinned: false
+license: mit
+---
+
 # 🤖 AI Personal Assistant — OSS vs Frontier Evaluation
 
 A comprehensive project that builds, deploys, and evaluates two AI personal assistants: one powered by an **open-source model** (Qwen 2.5) and another by a **frontier model** (Google Gemini / OpenAI GPT-4).
