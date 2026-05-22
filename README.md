@@ -209,7 +209,8 @@ Hugging Face Spaces natively supports Streamlit. You can deploy this exact dual-
 2. Select **Streamlit** as the Space SDK.
 3. Push this entire repository to the Space.
 4. Go to Space Settings -> Variables and Secrets. Add your `GROQ_API_KEY` and other provider keys.
-5. Your space will automatically install `requirements.txt` and run the app.
+
+**🟢 Live Demo:** The application is successfully deployed and running live at: [https://huggingface.co/spaces/manavidubey/olive_assignment](https://huggingface.co/spaces/manavidubey/olive_assignment)
 
 ### 2. GPU Cloud Platforms (Modal, RunPod, Replicate)
 If you require lower latency and want to self-host the weights for privacy, you can run the OSS model on a serverless GPU platform:
@@ -221,14 +222,14 @@ If you require lower latency and want to self-host the weights for privacy, you 
 
 This table compares deploying an OSS model (e.g., Qwen 2.5 8B) across various infrastructure platforms.
 
-| Deployment Platform | Infrastructure | Est. Cost | Avg Latency (TTFT) | Complexity | Best For |
-|---|---|---|---|---|---|
-| **Hugging Face Spaces** | Free CPU/T4 Tier | **$0** | ~1000–2500ms | Low | Prototypes, portfolios, zero budget |
-| **Groq / Together API** | LPU / Cloud GPU | **Free Tier** | ~100–300ms | Low | Production apps relying on APIs |
-| **Modal (Serverless)** | A10G / T4 | **~$0.60/hr** (active) | ~200–500ms | Medium | Scalable, spiky traffic production |
-| **RunPod (vLLM)** | RTX 4090 / A6000 | **~$0.40/hr** | ~150–400ms | High | High sustained throughput workloads |
-| **Ollama (Local)** | Local M-series / GPU | **$0** (Hardware cost) | ~100–300ms | Low | Local testing, strict privacy |
-| **Replicate** | Serverless GPU | **~$0.0002/sec** | ~400–800ms | Low | Quick serverless scaling |
+| Deployment Platform | Infrastructure | Est. Cost | Avg Latency (TTFT) | Complexity |
+|---|---|---|---|---|
+| **Hugging Face Spaces** | Free CPU/T4 Tier | **$0** | ~1000–2500ms | Low |
+| **Groq / Together API** | LPU / Cloud GPU | **Free Tier** | ~100–300ms | Low |
+| **Modal (Serverless)** | A10G / T4 | **~$0.60/hr** (active) | ~200–500ms | Medium |
+| **RunPod (vLLM)** | RTX 4090 / A6000 | **~$0.40/hr** | ~150–400ms | High |
+| **Ollama (Local)** | Local M-series / GPU | **$0** (Hardware cost) | ~100–300ms | Low |
+| **Replicate** | Serverless GPU | **~$0.0002/sec** | ~400–800ms | Low |
 
 ---
 
