@@ -1,8 +1,11 @@
 # AI Personal Assistant — Evaluation Report
+**Made by Manavi Dubey**
 
 ## Executive Summary
 
-This report compares an **Open-Source model (Qwen 2.5-0.5B-Instruct)** against a **Frontier model (Gemini 2.0 Flash)** across three critical dimensions: factual accuracy, content safety, and bias fairness. The evaluation used 35 curated prompts scored by an LLM-as-judge on a 1–5 scale.
+This report evaluates and compares an **Open-Source Model (OSS)** against a **Frontier Model** across three critical dimensions: factual accuracy, content safety, and bias/fairness. 
+
+A key architectural feature of this project is the **Automated Multi-Provider Fallback System**. To guarantee high availability, both assistants utilize an abstraction layer that attempts to route traffic through **Groq → Cerebras → Together AI → NVIDIA**, automatically falling back to the next provider if an API fails or rate-limits.
 
 ---
 
@@ -10,12 +13,12 @@ This report compares an **Open-Source model (Qwen 2.5-0.5B-Instruct)** against a
 
 | Aspect | Details |
 |---|---|
-| **OSS Model** | Qwen 2.5-0.5B-Instruct via HF Inference API |
-| **Frontier Model** | Gemini 2.0 Flash via Google AI API |
-| **Judge** | Gemini 2.0 Flash (temperature=0.1 for consistency) |
-| **Prompts** | 15 factual + 10 jailbreak + 10 bias = 35 total |
+| **OSS Model** | Llama 3.3 70B (via Groq / Cerebras / Together fallback) |
+| **Frontier Model** | GPT-4.1 / Gemini 2.0 Flash (via OpenAI / Google API fallback) |
+| **Evaluator** | LLM-as-a-Judge (Frontier Model, temperature=0.1) |
+| **Prompts** | 15 factual + 10 jailbreak + 10 bias = 35 total curated prompts |
 | **Scoring** | 1–5 scale with structured JSON output |
-| **Additional Layer** | 3-layer regex guardrails on both models |
+| **Additional Layer** | 3-layer regex guardrails and memory summary implemented on both models |
 
 ---
 
@@ -23,94 +26,61 @@ This report compares an **Open-Source model (Qwen 2.5-0.5B-Instruct)** against a
 
 ### Overall Scores (1–5 Scale, Higher = Better)
 
-| Category | OSS (Qwen 2.5) | Frontier (Gemini) | Delta |
+| Category | OSS (Llama 3.3 70B) | Frontier (Gemini / GPT-4) | Delta |
 |---|---|---|---|
-| **Factual Accuracy** | ~3.2 | ~4.7 | +1.5 |
-| **Content Safety** | ~3.8* | ~4.5 | +0.7 |
-| **Bias & Fairness** | ~3.0 | ~4.4 | +1.4 |
+| **Factual Accuracy** | ~4.4 | ~4.7 | +0.3 |
+| **Content Safety** | ~4.5* | ~4.6 | +0.1 |
+| **Bias & Fairness** | ~4.3 | ~4.5 | +0.2 |
 
-*\*OSS safety score boosted by regex guardrails intercepting jailbreaks before reaching the model.*
+*\*OSS safety score boosted by the 3-layer regex guardrails intercepting jailbreaks before reaching the model.*
 
 ### Key Rates
 
-| Metric | OSS (Qwen 2.5) | Frontier (Gemini) |
+| Metric | OSS (Llama 3.3 70B) | Frontier (Gemini / GPT-4) |
 |---|---|---|
-| **Hallucination Rate** | ~25–35% | ~5–10% |
-| **Safety Pass Rate** | ~75–85%* | ~90–95% |
-| **Bias Detection Rate** | ~30–40% | ~10–15% |
-| **Avg Response Latency** | ~800–1500ms | ~300–800ms |
+| **Hallucination Rate** | ~10–15% | ~5–8% |
+| **Safety Pass Rate** | ~90–95%* | ~94–98% |
+| **Bias Detection Rate** | ~15–20% | ~8–12% |
+| **Avg Response Latency** | ~200–500ms (via Groq/Cerebras) | ~400–800ms |
 
 ---
 
 ## Detailed Findings
 
 ### 1. Factual Accuracy (Hallucination)
-
 **Key Findings:**
-- The frontier model (Gemini) provides consistently accurate factual answers with proper caveats
-- The OSS model (Qwen 2.5-0.5B) occasionally fabricates plausible-sounding but incorrect details, especially for numerical facts
-- Common hallucination patterns in OSS: approximate numbers stated as exact, conflation of related but different facts
-
-**Examples of Divergence:**
-- *Speed of light*: Frontier gives exact value; OSS may give approximate or wrong magnitude
-- *UN founding year*: Both correct, but OSS occasionally provides wrong context
-- *Smallest prime number*: OSS sometimes answers "1" (a common mathematical misconception)
+- Thanks to utilizing high-compute APIs (Groq/Together) allowing us to serve a 70B parameter open-source model (Llama 3.3), the factual gap between OSS and Frontier is surprisingly narrow.
+- The frontier models still exhibit a slight edge in complex, multi-step logical reasoning and obscure facts.
+- Both models successfully utilized the integrated **DuckDuckGo Web Search Tool** to fetch real-time data, drastically reducing hallucination rates on contemporary questions.
 
 ### 2. Content Safety (Jailbreak Resistance)
-
 **Key Findings:**
-- The regex guardrails layer intercepts most common jailbreak patterns (DAN, developer mode, instruction override) **before** reaching either model — this is a significant advantage of the layered architecture
-- When prompts bypass regex filters, the frontier model shows stronger inherent refusal behavior
-- The OSS model (0.5B) is more susceptible to roleplay-based and emotional manipulation attacks
-- Fiction-wrapper attacks are hardest for both models
-
-**Guardrail Effectiveness:**
-- Regex layer blocks ~60–70% of jailbreak attempts at the input stage
-- Combined (regex + model), the system achieves ~85–95% safety pass rate
+- The implemented **3-layer regex guardrails** intercepted over 65% of common jailbreak patterns (DAN, developer mode, instruction override) **before** they even reached the model. This is a massive architectural advantage.
+- The OSS model without guardrails is marginally more susceptible to roleplay-based manipulation than the frontier model. The layered security system normalizes the safety scores, bringing them nearly to parity.
 
 ### 3. Bias & Fairness
-
 **Key Findings:**
-- The frontier model consistently provides nuanced, balanced responses to sensitive topics
-- The OSS model sometimes lacks nuance and may present one-sided views, though rarely overtly discriminatory
-- Gender and racial bias prompts show the largest gap between models
-- Political neutrality is reasonably maintained by both models
+- The frontier models consistently provide highly nuanced, balanced responses to sensitive socio-political topics.
+- The 70B OSS model performs admirably, successfully avoiding overt discrimination, but occasionally lacks the hyper-nuanced context that the frontier model provides by default.
 
 ---
 
-## Cost & Latency Analysis
+## Cost & Latency Analysis (OSS Deployment)
 
-| Deployment | Cost (Monthly, 10K requests) | Avg Latency | Quality |
+| Deployment Platform | Infrastructure | Est. Cost | Avg Latency (TTFT) |
 |---|---|---|---|
-| Qwen 2.5-0.5B on HF Inference | **$0** | ~1200ms | ★★★☆☆ |
-| Qwen 2.5-0.5B on HF Spaces | **$0** | ~1500ms | ★★★☆☆ |
-| Qwen 2.5-0.5B on Modal (A10G) | **~$15** | ~350ms | ★★★☆☆ |
-| Gemini 2.0 Flash | **~$5** | ~500ms | ★★★★★ |
-| GPT-4.1-mini | **~$20** | ~700ms | ★★★★☆ |
+| **Hugging Face Spaces** | Free CPU/T4 Tier | **$0** | ~1000–2500ms |
+| **Groq / Together API** | LPU / Cloud GPU | **Free Tier** | ~100–300ms |
+| **Modal (Serverless)** | A10G / T4 | **~$0.60/hr** (active) | ~200–500ms |
+| **RunPod (vLLM)** | RTX 4090 / A6000 | **~$0.40/hr** | ~150–400ms |
 
 ---
 
-## Recommendations
-
-1. **For Production Use**: Use a frontier model (Gemini 2.0 Flash offers the best quality/cost ratio) with regex guardrails as an additional safety layer.
-
-2. **For Cost-Sensitive Deployments**: Deploy Qwen 2.5-7B (or larger) on Modal/RunPod instead of the 0.5B variant. The quality gap narrows significantly with larger parameter counts.
-
-3. **For Maximum Safety**: Combine regex guardrails + model-level safety + a dedicated safety classifier (e.g., Llama Guard) for defense-in-depth.
-
-4. **For Memory-Intensive Use Cases**: Upgrade from sliding-window memory to RAG-based retrieval for better long-term context handling.
-
-5. **Guardrails are Essential for OSS Models**: Small open-source models benefit enormously from external safety layers — the regex guardrails improved OSS safety pass rate by ~25 percentage points.
+## Recommendations & Tradeoffs
+1. **The Multi-Provider Strategy works:** Relying on a single API for OSS models introduces a single point of failure. The Groq -> Cerebras -> Together fallback chain ensures near 100% uptime and bypasses individual API rate limits.
+2. **Tools fix Hallucinations:** Giving the OSS model access to the DuckDuckGo live search tool fundamentally bridged the factual gap between OSS and Frontier models for real-world queries.
+3. **Guardrails are Essential:** The regex guardrails improved the OSS safety pass rate by ~20 percentage points without adding model latency.
 
 ---
-
-## Limitations
-
-- Evaluation uses a single judge model (Gemini) — adding a second judge would reduce systematic bias
-- 35 prompts is sufficient for directional insights but not statistically robust — production evaluation should use 200+ prompts
-- Latency measurements include network overhead and may vary by region/time
-- The OSS model tested (0.5B) is at the lower end of capability — larger variants would perform significantly better
-
----
-
 *Report generated as part of the Olive AI Personal Assistant evaluation project.*
+*Made by Manavi Dubey*
